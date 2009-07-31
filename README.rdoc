@@ -1,0 +1,13 @@
+= A Better BJ
+
+Let's face it, we all want a better_bj.  Well, I'm the guy who will give it to you.
+
+The original, less satisfying bj[http://github.com/ahoward/bj/tree/master] was a <b>b</b>ackground <b>j</b>ob manager for Rails by ara.t.howard[http://codeforpeople.com/].  Surprised?  What did you think it stood for?  Shame on you!
+
+You used bj as a super simple, zero administration, background priority queue for Rails and better_bj strives to preserve that goal.  However, better_bj will drop Windows support in favor of a more flexible forked process design intended to work on Unix.
+
+Upgrades in better_bj:
+
+* Load the full Rails environment for the runner and job processes
+* Support different types of jobs:  shell command, Rake task, and evaled code
+* Improve the command-line interface
