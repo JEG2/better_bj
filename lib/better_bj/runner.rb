@@ -20,6 +20,7 @@ module BetterBJ
         writer.close if @tethered
         @event_loop_thread = Thread.current
         @tether_thread     = Thread.new do
+          Thread.current.abort_on_exception = true
           reader.read
           @running = false
           @event_loop_thread.run
