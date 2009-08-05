@@ -10,4 +10,5 @@ Upgrades in better_bj:
 
 * Load the full Rails environment for the runner and job processes
 * Support different types of jobs:  shell command, Rake task, and evaled code
+* Support for periodic jobs
 * Improve the command-line interface
