@@ -1,6 +1,6 @@
 # encoding: UTF-8
 
-require "test/unit"
+require "test_helper"
 
 require "better_bj/runner"
 
@@ -63,20 +63,5 @@ class TestRunner < Test::Unit::TestCase
     end
     @runner_pid = Integer(@reader.gets)
     @reader.gets  # wait for "active"
-  end
-  
-  def pid_running?(pid)
-    Process.kill(0, pid)
-    true
-  rescue Exception
-    false
-  end
-  
-  def assert_pid_running(pid)
-    assert(pid_running?(pid), "PID #{pid} could not be found")
-  end
-  
-  def assert_pid_not_running(pid)
-    assert(!pid_running?(pid), "PID #{pid} was found")
   end
 end
