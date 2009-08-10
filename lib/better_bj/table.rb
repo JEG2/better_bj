@@ -25,17 +25,23 @@ module BetterBJ
       @list ||= [ ]
     end
     
-    def self.each(skip_abstracts = false)
+    def self.each(skip_abstracts_and_stis = false)
       list.each do |table|
-        next if skip_abstracts and table.abstract_class?
+        if skip_abstracts_and_stis
+          next if table.abstract_class?
+          next if table.name =~ /(?:\A|::)(?:Active|Executed)\w+Job\z/
+        end
         yield table
       end
     end
     extend Enumerable
     
-    def self.reverse_each(skip_abstracts = false)
+    def self.reverse_each(skip_abstracts_and_stis = false)
       list.reverse_each do |table|
-        next if skip_abstracts and table.abstract_class?
+        if skip_abstracts_and_stis
+          next if table.abstract_class?
+          next if table.name =~ /(?:\A|::)(?:Active|Executed)\w+Job\z/
+        end
         yield table
       end
     end
@@ -95,12 +101,12 @@ module BetterBJ
       if self == Table
         migration = ["class CreateBetterBJTables < ActiveRecord::Migration",
                      "  def self.up"]
-        each(:skip_abstracts) do |table|
+        each(:skip_abstracts_and_stis) do |table|
           migration.push(*table.migration.map { |line| "    #{line}" })
         end
         migration.push( "  end",
                         "  def self.down" )
-        reverse_each(:skip_abstracts) do |table|
+        reverse_each(:skip_abstracts_and_stis) do |table|
           migration << "    drop_table #{table.table_name}"
         end
         migration.push( "  end",
@@ -109,7 +115,7 @@ module BetterBJ
         migration = ["create_table :#{table_name} do |t|"]
         fields.each do |field|
           migration     << "  t.#{field[1]} :#{field[0]}"
-          migration[-1] << ", #{field[3].inspect[1..-2]}" unless field[3].nil?
+          migration[-1] << ", #{field[2].inspect[1..-2]}" unless field[2].nil?
         end
         migration << "  t.timestamps"
         migration << "end"

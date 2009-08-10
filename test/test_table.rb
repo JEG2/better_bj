@@ -38,28 +38,31 @@ class TestTable < Test::Unit::TestCase
     assert_not_nil(BetterBJ.table.detect { |t| not t.abstract_class? })
   end
   
-  def test_each_and_reverse_each_can_optionally_skip_abstract_classes
-    # default:  include abstracts
+  def test_each_and_reverse_each_can_optionally_skip_abstract_and_sti_classes
+    # default:  include abstract and STI classes
     assert( BetterBJ.table.any? { |t| t.abstract_class? },
             "An abstract class was not returned by each by default" )
+    assert( BetterBJ.table.any? { |t| t.name =~ /\bActive\w+Job\z/ },
+            "An STI class was not returned by each by default" )
     saw_abstract = false
+    saw_sti      = false
     BetterBJ.table.reverse_each do |table|
-      if table.abstract_class?
-        saw_abstract = true
-        break
-      end
+      saw_abstract = true if table.abstract_class?
+      saw_sti      = true if table.name =~ /\bActive\w+Job\z/
     end
     assert( saw_abstract,
             "An abstract class was not returned by reverse_each by default" )
     
     # optional:  request to skip them
-    BetterBJ.table.each(:skip_abstracts) do |table|
+    BetterBJ.table.each(:skip_abstracts_and_stis) do |table|
       assert( !table.abstract_class?,
               "An abstract was included by each with skipping" )
+      assert_no_match(/\bActive\w+Job\z/, table.name)
     end
-    BetterBJ.table.reverse_each(:skip_abstracts) do |table|
+    BetterBJ.table.reverse_each(:skip_abstracts_and_stis) do |table|
       assert( !table.abstract_class?,
               "An abstract was included by reverse_each with skipping" )
+      assert_no_match(/\bActive\w+Job\z/, table.name)
     end
   end
   
@@ -160,11 +163,12 @@ class TestTable < Test::Unit::TestCase
   end
   
   def test_migration_produces_typical_rails_code
-    table_migration = BetterBJ::ExecutedJob.migration
+    table_migration = BetterBJ::ActiveJob.migration
     assert_match( / ^\s*create_table\s+
-                    :#{Regexp.escape(BetterBJ::ExecutedJob.table_name)}
-                    /x,              table_migration[0] )
-    assert_match(/^\s*t.timestamps/, table_migration[-2] )
+                    :#{Regexp.escape(BetterBJ::ActiveJob.table_name)}
+                    /x,                 table_migration[0] )
+    assert_match(/^\s*t\.text :code\b/, table_migration.join("\n"))
+    assert_match(/^\s*t.timestamps/,    table_migration[-2] )
     
     full_migration = BetterBJ::Table.migration
     assert_match( / ^\s*class\s+\S+\s+<\s+
@@ -179,7 +183,7 @@ class TestTable < Test::Unit::TestCase
   
   def test_migration_is_valid
     prepare_test_db  # ensure we can migrate the database with valid code
-    BetterBJ.table.each(:skip_abstracts) do |table|
+    BetterBJ.table.each(:skip_abstracts_and_stis) do |table|
       assert( table.table_exists?,
               "Table #{table} was not created by the migrations" )
     end
