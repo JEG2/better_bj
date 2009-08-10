@@ -32,7 +32,7 @@ module BetterBJ
           begin
             __code_executor_result__[:result] = eval(@code, TOPLEVEL_BINDING)
           rescue Exception => error
-            raise if error.is_a? SystemExit
+            fail if error.is_a? SystemExit
             __code_executor_result__[:error] = error
           end
         end

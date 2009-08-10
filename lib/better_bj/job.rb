@@ -8,10 +8,10 @@ module BetterBJ
   end
   
   class ActiveJob < Job
-    
+    set_table_name "better_bj_active_jobs"
   end
   
-  class ArchivedJob < Job
-    
+  class ExecutedJob < Job
+    set_table_name "better_bj_executed_jobs"
   end
 end
