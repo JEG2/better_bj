@@ -6,9 +6,26 @@ require "rubygems"
 require "active_record"
 
 module TestHelper
-  DB_PATH = File.join(File.dirname(__FILE__), "test_db.sqlite")
+  RESULT_PATH = File.join(File.dirname(__FILE__), "code_run.txt")
+  DB_PATH     = File.join(File.dirname(__FILE__), "test_db.sqlite")
   
   private
+  
+  #########################
+  ### Code Result Files ###
+  #########################
+  
+  def cleanup_result_file
+    File.unlink(RESULT_PATH) if File.exist? RESULT_PATH
+  end
+  
+  def assert_result_file_doesnt_exist
+    assert(!File.exist?(RESULT_PATH), "Result file was present")
+  end
+  
+  def assert_result_file_exists
+    assert(File.exist?(RESULT_PATH), "Result file was not created")
+  end
   
   #################
   ### Processes ###

@@ -2,6 +2,8 @@
 
 require "thread"
 
+require "better_bj/util"
+
 module BetterBJ
   class CodeExecutor
     def initialize(code)
@@ -19,21 +21,21 @@ module BetterBJ
       q                 = Queue.new
       @execution_thread = Thread.new do
         reader, writer  = IO.pipe
-        pid             = fork do
+        pid             = Util.db_safe_fork do
           reader.close
-          __code_executor_result__ = { }
+          result = { }
           at_exit do
             begin
-              writer.write(Marshal.dump(__code_executor_result__))
+              writer.write(Marshal.dump(result))
             rescue Exception
               # do nothing:  we can't pass the results up
             end
           end
           begin
-            __code_executor_result__[:result] = eval(@code, TOPLEVEL_BINDING)
+            result[:result] = eval(@code, TOPLEVEL_BINDING)
           rescue Exception => error
             fail if error.is_a? SystemExit
-            __code_executor_result__[:error] = error
+            result[:error] = error
           end
         end
         writer.close
@@ -60,6 +62,25 @@ module BetterBJ
     def run
       start
       wait
+    end
+    
+    def successful?
+      @execution_thread            and
+      not @execution_thread.alive? and
+      @exit_status == 0            and
+      @error.nil?
+    end
+    
+    def run_error
+      if successful?
+        nil
+      elsif not error.nil?
+        "#{error.class}: #{error.message}\n#{error.backtrace.join("\n")}\n"
+      elsif not exit_status.nil? and exit_status.nonzero?
+        "Exit status:  #{exit_status}"
+      else
+        "Job terminated unexpectedly"
+      end
     end
   end
 end

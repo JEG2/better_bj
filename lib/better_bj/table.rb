@@ -34,7 +34,6 @@ module BetterBJ
         yield table
       end
     end
-    extend Enumerable
     
     def self.reverse_each(skip_abstracts_and_stis = false)
       list.reverse_each do |table|

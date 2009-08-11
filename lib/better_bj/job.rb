@@ -1,6 +1,9 @@
 # encoding: UTF-8
 
+require "logger"
+
 require "better_bj/table"
+require "better_bj/code_executor"
 
 module BetterBJ
   class Job < Table
@@ -11,7 +14,6 @@ module BetterBJ
     self.abstract_class = true
     
     field :code,           :text,                               :null => false
-    field :type,           :string,                             :null => false
     field :priority,       :integer,  :default => 0,            :null => false
 
     field :retries,        :integer,  :default => 0,            :null => false
@@ -24,7 +26,7 @@ module BetterBJ
     field :runner_pid,     :integer
     field :job_pid,        :integer
     
-    field :run_at,         :datetime, :default => "NOW()",      :null => false
+    field :run_at,         :datetime,                           :null => false
     field :started_at,     :datetime
     field :finished_at,    :datetime
     
@@ -35,6 +37,9 @@ module BetterBJ
     field :stdin,          :text
     field :stdout,         :text
     field :stderr,         :text
+    
+    serialize :result
+    serialize :error
     
     ###################
     ### Validations ###
@@ -68,7 +73,9 @@ module BetterBJ
     
     set_table_name "better_bj_active_jobs"
 
+    field :type,           :string,                             :null => false
     field :state,          :string,   :default => STATES.first, :null => false
+    field :lock_version,   :integer,  :default => 0,            :null => false
     
     ###################
     ### Validations ###
@@ -76,10 +83,51 @@ module BetterBJ
     
     validates_presence_of  :state
     validates_inclusion_of :state, :in => STATES
+
+    ########################
+    ### Instance Methods ###
+    ########################
+    
+    def run
+      executor = prepare_executor
+      job_pid  = executor.start
+
+      update_attributes(:state => "Running", :job_pid => job_pid)
+      
+      executor.wait
+      if executor.successful? or attempts >= retries
+        completed_job = attributes.dup
+        %w[id type state lock_version].each do |attribute|
+          completed_job.delete(attribute)
+        end
+        transaction do
+          ExecutedJob.create!( completed_job.merge(
+            :job_type    => self.class.name[/\bActive(\w+)Job\z/, 1].underscore,
+            :attempts    => attempts + 1,
+            :exit_status => executor.exit_status,
+            :result      => executor.result,
+            :error       => executor.error,
+            :successful  => executor.successful?,
+            :finished_at => Time.now
+          ) )
+          destroy or fail "Could not destroy executed job"
+        end
+      else
+        update_attributes( :attempts       => attempts + 1,
+                           :last_run_error => executor.run_error,
+                           :finished_at    => Time.now )
+      end
+    end
   end
   
   class ActiveCodeJob < ActiveJob
+    ########################
+    ### Instance Methods ###
+    ########################
     
+    def prepare_executor
+      CodeExecutor.new(code)
+    end
   end
   
   class ActiveRubyScriptJob < ActiveJob
@@ -95,11 +143,27 @@ module BetterBJ
   end
   
   class ExecutedJob < Job
+    #################
+    ### Constants ###
+    #################
+    
+    JOB_TYPES = %w[code ruby_script rake_task shell_command]
+    
     ##############
     ### Schema ###
     ##############
     
     set_table_name "better_bj_executed_jobs"
+
+    field :job_type,       :string,                             :null => false
+    field :successful,     :boolean,                            :null => false
+    
+    ###################
+    ### Validations ###
+    ###################
+    
+    validates_presence_of  :job_type
+    validates_inclusion_of :job_type, :in => JOB_TYPES
     
     ########################
     ### Instance Methods ###

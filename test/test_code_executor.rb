@@ -5,24 +5,20 @@ require "test_helper"
 require "better_bj/code_executor"
 
 class TestCodeExecutor < Test::Unit::TestCase
-  def setup
-    @result_path = File.join(File.dirname(__FILE__), "code_run.txt")
-  end
-  
   def teardown
-    File.unlink(@result_path) if File.exist? @result_path
+    cleanup_result_file
   end
   
   def test_code_is_executed
-    flunk("Run file already existed") if File.exist? @result_path
-    run_code('open(%p, "w") { }' % @result_path)
-    assert(File.exist?(@result_path), "Run file was not created")
+    assert_result_file_doesnt_exist
+    run_code('open(%p, "w") { }' % RESULT_PATH)
+    assert_result_file_exists
   end
 
   def test_code_is_executed_in_a_separate_process
-    flunk("Run file already existed") if File.exist? @result_path
-    run_code('open(%p, "w") { |f| f.puts Process.pid }' % @result_path)
-    assert_not_equal(Process.pid, File.read(@result_path).to_i)
+    assert_result_file_doesnt_exist
+    run_code('open(%p, "w") { |f| f.puts Process.pid }' % RESULT_PATH)
+    assert_not_equal(Process.pid, File.read(RESULT_PATH).to_i)
   end
   
   def test_code_can_be_started_and_waited_on
@@ -64,6 +60,49 @@ class TestCodeExecutor < Test::Unit::TestCase
     assert_not_nil(@code.error)
     assert_instance_of(StandardError, @code.error)
     assert_match(/My error message/, @code.error.message)
+  end
+  
+  def test_successful_tracks_finished_exit_status_and_error
+    # success
+    prepare_code('sleep 1  # and exit normally')
+    assert(!@code.successful?, "Code was successful before it ran")
+    @code.start
+    assert(!@code.successful?, "Code was successful before it finished")
+    @code.wait
+    assert(@code.successful?, "Code wasn't successful with a normal exit")
+    
+    # fail with an error
+    run_code('fail "Oops!"')
+    assert(!@code.successful?, "Code was successful with an error")
+    
+    # fail with an abnormal exit status
+    run_code('exit 7')
+    assert(!@code.successful?, "Code was successful with an abnormal exit")
+  end
+  
+  def test_run_error_shows_process_failure_reason
+    # success
+    run_code('# exit normally')
+    assert_nil(@code.run_error)
+    
+    # fail with an error
+    run_code('fail "Oops!"')
+    assert_match(/\ARuntimeError:\s+/,                        @code.run_error)
+    assert_match(/\s+#{Regexp.escape(@code.error.message)}$/, @code.run_error)
+    @code.error.backtrace.each do |line|
+      assert_match(/^\s*#{Regexp.escape(line)}$/,             @code.run_error)
+    end
+    
+    # fail with an abnormal exit status
+    run_code('exit 7')
+    assert_match(/\AExit status:\s+7\z/, @code.run_error)
+    
+    # fail by being KILLed
+    prepare_code('sleep 60')
+    @code.start
+    Process.kill("KILL", @code.pid)
+    @code.wait
+    assert_match(/Job terminated unexpectedly/, @code.run_error)
   end
   
   private

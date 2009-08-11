@@ -34,16 +34,20 @@ class TestTable < Test::Unit::TestCase
     BetterBJ.table.reverse_each do |eached|
       assert_equal(reversed_list.shift, eached)
     end
-    # other Enumerable methods
-    assert_not_nil(BetterBJ.table.detect { |t| not t.abstract_class? })
   end
   
   def test_each_and_reverse_each_can_optionally_skip_abstract_and_sti_classes
     # default:  include abstract and STI classes
-    assert( BetterBJ.table.any? { |t| t.abstract_class? },
-            "An abstract class was not returned by each by default" )
-    assert( BetterBJ.table.any? { |t| t.name =~ /\bActive\w+Job\z/ },
-            "An STI class was not returned by each by default" )
+    saw_abstract = false
+    saw_sti      = false
+    BetterBJ.table.each do |table|
+      saw_abstract = true if table.abstract_class?
+      saw_sti      = true if table.name =~ /\bActive\w+Job\z/
+    end
+    assert( saw_abstract,
+            "An abstract class was not returned by reverse_each by default" )
+    assert( saw_sti,
+            "An STI class was not returned by reverse_each by default" )
     saw_abstract = false
     saw_sti      = false
     BetterBJ.table.reverse_each do |table|
@@ -52,6 +56,8 @@ class TestTable < Test::Unit::TestCase
     end
     assert( saw_abstract,
             "An abstract class was not returned by reverse_each by default" )
+    assert( saw_sti,
+            "An STI class was not returned by reverse_each by default" )
     
     # optional:  request to skip them
     BetterBJ.table.each(:skip_abstracts_and_stis) do |table|

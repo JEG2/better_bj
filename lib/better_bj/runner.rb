@@ -1,5 +1,7 @@
 # encoding: UTF-8
 
+require "better_bj/util"
+
 module BetterBJ
   class Runner
     def initialize(options = { }, &event_loop)
@@ -16,7 +18,7 @@ module BetterBJ
     
     def run
       reader, writer = IO.pipe if @tethered
-      @pid = fork do
+      @pid           = Util.db_safe_fork do
         writer.close if @tethered
         @event_loop_thread = Thread.current
         @tether_thread     = Thread.new do
@@ -26,7 +28,7 @@ module BetterBJ
           @event_loop_thread.run
         end
         while @running
-          @event_loop[self]
+          @event_loop.call
           sleep @sleep_seconds
         end
       end
