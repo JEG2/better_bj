@@ -102,13 +102,15 @@ module BetterBJ
         end
         transaction do
           ExecutedJob.create!( completed_job.merge(
-            :job_type    => self.class.name[/\bActive(\w+)Job\z/, 1].underscore,
-            :attempts    => attempts + 1,
-            :exit_status => executor.exit_status,
-            :result      => executor.result,
-            :error       => executor.error,
-            :successful  => executor.successful?,
-            :finished_at => Time.now
+            :job_type       => self.class.name[/\bActive(\w+)Job\z/, 1].
+                                          underscore,
+            :attempts       => attempts + 1,
+            :exit_status    => executor.exit_status,
+            :result         => executor.result,
+            :error          => executor.error,
+            :last_run_error => executor.run_error || last_run_error,
+            :successful     => executor.successful?,
+            :finished_at    => Time.now
           ) )
           destroy or fail "Could not destroy executed job"
         end
@@ -126,7 +128,7 @@ module BetterBJ
     ########################
     
     def prepare_executor
-      CodeExecutor.new(code)
+      CodeExecutor.new(code, :timeout => timeout)
     end
   end
   

@@ -1,13 +1,16 @@
 # encoding: UTF-8
 
 require "thread"
+require "timeout"
 
 require "better_bj/util"
 
 module BetterBJ
   class CodeExecutor
-    def initialize(code)
+    def initialize(code, options = { })
       @code             = code
+      @timeout          = options.fetch(:timeout, 10 * 60)
+      @exceeded_timeout = false
       @execution_thread = nil
       @pid              = nil
       @exit_status      = nil
@@ -40,7 +43,14 @@ module BetterBJ
         end
         writer.close
         q << pid
-        @exit_status = Process.wait2(pid).last.exitstatus
+        begin
+          Timeout.timeout(@timeout) do
+            @exit_status = Process.wait2(pid).last.exitstatus
+          end
+        rescue Timeout::Error
+          @exceeded_timeout = true
+          @exit_status      = Util.stop_process(pid)
+        end
         begin
           result = Marshal.load(reader.read)
           if result.is_a? Hash
@@ -71,9 +81,15 @@ module BetterBJ
       @error.nil?
     end
     
+    def exceeded_timeout?
+      @exceeded_timeout
+    end
+    
     def run_error
       if successful?
         nil
+      elsif exceeded_timeout?
+        "Job exceeded timeout"
       elsif not error.nil?
         "#{error.class}: #{error.message}\n#{error.backtrace.join("\n")}\n"
       elsif not exit_status.nil? and exit_status.nonzero?

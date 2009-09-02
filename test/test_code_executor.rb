@@ -85,6 +85,10 @@ class TestCodeExecutor < Test::Unit::TestCase
     run_code('# exit normally')
     assert_nil(@code.run_error)
     
+    # timeout
+    run_code('sleep 60', :timeout => 1)
+    assert_match(/Job exceeded timeout/, @code.run_error)
+    
     # fail with an error
     run_code('fail "Oops!"')
     assert_match(/\ARuntimeError:\s+/,                        @code.run_error)
@@ -103,6 +107,21 @@ class TestCodeExecutor < Test::Unit::TestCase
     Process.kill("KILL", @code.pid)
     @code.wait
     assert_match(/Job terminated unexpectedly/, @code.run_error)
+  end
+  
+  def test_code_is_halted_if_it_runs_over_the_timeout
+    started = Time.now
+    prepare_code('sleep 60', :timeout => 1)
+    assert( !@code.exceeded_timeout?,
+            "Code exceeded the timeout before being run" )
+    @code.start
+    assert( !@code.exceeded_timeout?,
+            "Code exceeded the timeout while being run" )
+    @code.wait
+    run_time = Time.now - started
+    assert_equal(1, run_time.to_i)
+    assert( @code.exceeded_timeout?,
+            "Code was not marked as having exceeded the timeout" )
   end
   
   private

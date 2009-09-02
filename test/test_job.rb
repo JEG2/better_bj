@@ -196,6 +196,29 @@ class TestJob < Test::Unit::TestCase
     assert_not_nil(@job.finished_at)
   end
   
+  def test_run_keeps_the_latest_run_error_if_not_replaced
+    path = File.join(File.dirname(__FILE__), "one_error_only.txt")
+    create_code_job(<<-END_RUBY % [path, path], :retries => 1)
+    if File.exist? %p
+      # exit cleanly
+    else
+      open(%p, "w") { }  # just touch the file
+      exit -1            # and exit with an error
+    end
+    END_RUBY
+    assert_nil(@job.last_run_error)
+    @job.run
+    assert_match(/\AExit status/, @job.last_run_error)
+    @job.run
+    assert_equal(0, BetterBJ::ActiveJob.count)
+    assert_equal(1, BetterBJ::ExecutedJob.count)
+    executed = BetterBJ::ExecutedJob.first
+    assert_match(/\AExit status/, executed.last_run_error)
+    assert(executed.successful?, "The second job execution wasn't successful")
+  ensure
+    File.unlink(path) if File.exist? path
+  end
+  
   def test_run_moves_a_job_to_executed_jobs_when_retries_are_exhausted
     test_run_updates_attempts_last_run_error_and_finished_at_for_a_failed_job
     assert_equal(@job.retries, @job.attempts)  # the next run exhausts retries
@@ -206,8 +229,15 @@ class TestJob < Test::Unit::TestCase
     assert_equal(1, BetterBJ::ExecutedJob.count)
     executed = BetterBJ::ExecutedJob.first
     assert_equal(executed.retries + 1, executed.attempts)
-    assert_match(/\AExit status/, @job.last_run_error)
+    assert_match(/\AExit status/, executed.last_run_error)
     assert(!executed.successful?, "Exhausting retries wasn't unsuccessful")
+  end
+  
+  def test_run_marks_jobs_with_a_timeout_error
+    create_code_job('sleep 60', :timeout => 1, :retries => 1)
+    assert_nil(@job.last_run_error)
+    @job.run
+    assert_match(/Job exceeded timeout/, @job.last_run_error)
   end
   
   private
