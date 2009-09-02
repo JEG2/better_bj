@@ -12,3 +12,4 @@ Upgrades in better_bj:
 * Support different types of jobs:  shell command, Rake task, and evaled code
 * Support for periodic jobs
 * Improve the command-line interface
+* More stats and reporting for jobs and workers
