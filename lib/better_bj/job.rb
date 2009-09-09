@@ -1,7 +1,5 @@
 # encoding: UTF-8
 
-require "logger"
-
 require "better_bj/table"
 require "better_bj/code_executor"
 

@@ -38,13 +38,19 @@ module TestHelper
     false
   end
   
-  def assert_pid_running(pid)
-    assert(pid_running?(pid), "PID #{pid} could not be found")
+  def assert_pid_running(*pids)
+    pids.flatten.each do |pid|
+      assert(pid_running?(pid), "PID #{pid} could not be found")
+    end
   end
+  alias_method :assert_pids_running, :assert_pid_running
   
-  def assert_pid_not_running(pid)
-    assert(!pid_running?(pid), "PID #{pid} was found")
+  def assert_pid_not_running(*pids)
+    pids.flatten.each do |pid|
+      assert(!pid_running?(pid), "PID #{pid} was found")
+    end
   end
+  alias_method :assert_pids_not_running, :assert_pid_not_running
   
   ################
   ### Database ###
