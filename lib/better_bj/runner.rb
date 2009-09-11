@@ -3,6 +3,7 @@
 require "socket"
 
 require "better_bj/table"
+require "better_bj/job"
 require "better_bj/util"
 
 module BetterBJ
@@ -44,8 +45,9 @@ module BetterBJ
     ### Validations ###
     ###################
     
-    validates_presence_of   :hostname, :environment, :uid, :pid
-    validates_uniqueness_of :uid, :scope => %w[hostname environment]
+    validates_presence_of     :hostname, :environment, :uid, :pid
+    validates_uniqueness_of   :uid, :scope => %w[hostname environment]
+    validates_numericality_of :uid, :pid, :only_integer => true
 
     ########################
     ### Instance Methods ###
@@ -80,6 +82,45 @@ module BetterBJ
       read_status? ? self : nil
     end
     
+    def notice_jobs
+      return if pid.blank?
+      if hostname == Socket.gethostname and pid == Process.pid
+        if defined? @event_loop_thread
+          @event_loop_thread.run
+          true
+        else
+          false
+        end
+      else
+        begin
+          Process.kill("ALRM", pid)
+          true
+        rescue Exception
+          false
+        end
+      end
+    end
+    
+    def shutdown
+      return if pid.blank?
+      if hostname == Socket.gethostname and pid == Process.pid
+        if defined?(@running) and defined? @event_loop_thread
+          @running = false
+          @event_loop_thread.run
+          true
+        else
+          false
+        end
+      else
+        begin
+          Process.kill("TERM", pid)
+          true
+        rescue Exception
+          false
+        end
+      end
+    end
+    
     #######
     private
     #######
@@ -89,17 +130,26 @@ module BetterBJ
     ######################
     
     def prepare_runner_process
-      @running           = true
-      @event_loop_thread = Thread.current
+      trap("ALRM") do
+        notice_jobs
+      end
+      %w[TERM INT].each do |signal|
+        trap(signal) do
+          shutdown
+        end
+      end
     end
     
     def tether_to_launching_process
       @tether_writer.close
-      @tether_thread = Thread.new do
+      @tether_thread                      = Thread.new do
         Thread.current.abort_on_exception = true
-        @tether_reader.read
-        @running = false
-        @event_loop_thread.run
+        begin
+          @tether_reader.read
+        rescue Exception
+          # do nothing:  we lost our tether
+        end
+        shutdown
       end
     end
     
@@ -117,14 +167,22 @@ module BetterBJ
     end
     
     def do_event_loop
-      while @running
-        run_jobs
-        sleep sleep_seconds
+      @running                            = true
+      @event_loop_thread                  = Thread.new do
+        Thread.current.abort_on_exception = true
+        while @running
+          run_jobs
+          sleep sleep_seconds
+        end
       end
+      @event_loop_thread.join
     end
     
     def run_jobs
-      
+      while job = ActiveJob.find_ready_to_run
+        job.lock? or next
+        job.run
+      end
     end
     
     #########################

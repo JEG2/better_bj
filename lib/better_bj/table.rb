@@ -106,7 +106,7 @@ module BetterBJ
         migration.push( "  end",
                         "  def self.down" )
         reverse_each(:skip_abstracts_and_stis) do |table|
-          migration << "    drop_table #{table.table_name}"
+          migration << "    drop_table :#{table.table_name}"
         end
         migration.push( "  end",
                         "end" )

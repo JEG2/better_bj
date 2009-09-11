@@ -5,6 +5,16 @@ require "better_bj/code_executor"
 
 module BetterBJ
   class Job < Table
+    #####################
+    ### Class Methods ###
+    #####################
+    
+    def self.submit(code, options = { })
+      ActiveCodeJob.create!( { :code          => code,
+                               :submitter_pid => Process.pid,
+                               :run_at        => Time.now }.merge(options) )
+    end
+    
     ##############
     ### Schema ###
     ##############
@@ -63,7 +73,17 @@ module BetterBJ
     ### Constants ###
     #################
     
-    STATES = %w[Pending Starting Running]
+    STATES       = %w[Pending Starting Running]
+    RETRY_DELAYS = [1, 1, 2, 3, 5, 8, 13, 21, 34].map { |n| n * 60 }
+    
+    #####################
+    ### Class Methods ###
+    #####################
+    
+    def self.find_ready_to_run
+      first( :conditions => ["state = 'Pending' AND run_at <= ?", Time.now],
+             :order      => "run_at" )
+    end
     
     ##############
     ### Schema ###
@@ -85,6 +105,14 @@ module BetterBJ
     ########################
     ### Instance Methods ###
     ########################
+    
+    def lock?
+      !!update_attributes( :state      => "Starting",
+                           :started_at => Time.now,
+                           :runner_pid => Process.pid )
+    rescue ActiveRecord::StaleObjectError
+      false
+    end
     
     def run
       executor = prepare_executor
@@ -113,9 +141,13 @@ module BetterBJ
           destroy or fail "Could not destroy executed job"
         end
       else
-        update_attributes( :attempts       => attempts + 1,
+        update_attributes( :state          => "Pending",
+                           :attempts       => attempts + 1,
                            :last_run_error => executor.run_error,
-                           :finished_at    => Time.now )
+                           :finished_at    => Time.now,
+                           :run_at         => run_at +
+                                              ( RETRY_DELAYS[attempts] ||
+                                                RETRY_DELAYS.last ) )
       end
     end
   end

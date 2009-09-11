@@ -96,8 +96,6 @@ class TestJob < Test::Unit::TestCase
     assert_required_field(BetterBJ::ActiveCodeJob, :run_at, Time.now)
   end
   
-  # ActiveRecord doesn't support run_at's default time
-
   def test_state_is_required
     assert_required_field(BetterBJ::ActiveCodeJob, :state, "Pending")
   end
@@ -129,6 +127,75 @@ class TestJob < Test::Unit::TestCase
     @job.reload
     assert_instance_of(Array,     @job.result)
     assert_instance_of(Exception, @job.error)
+  end
+  
+  ##################
+  ### Submitting ###
+  ##################
+  
+  def test_sumbit_creates_an_active_job
+    assert_nil(BetterBJ::ActiveJob.first)
+    code = '# some work here'
+    BetterBJ::Job.submit(code)
+    job = BetterBJ::ActiveJob.first
+    assert_not_nil(job)
+    assert_equal(code, job.code)
+  end
+  
+  def test_sumbit_sets_a_default_submitter_pid_for_the_current_process
+    assert_nil(BetterBJ::ActiveJob.first)
+    BetterBJ::Job.submit('# some work here')
+    assert_equal(Process.pid, BetterBJ::ActiveJob.first.submitter_pid)
+    BetterBJ::ActiveJob.delete_all
+    pid = 123
+    BetterBJ::Job.submit('# some work here', :submitter_pid => pid)
+    assert_equal(pid, BetterBJ::ActiveJob.first.submitter_pid)
+  end
+  
+  def test_sumbit_sets_a_default_run_at_of_now
+    assert_nil(BetterBJ::ActiveJob.first)
+    BetterBJ::Job.submit('# some work here')
+    assert_in_delta(Time.now.to_f, BetterBJ::ActiveJob.first.run_at.to_f, 1)
+    BetterBJ::ActiveJob.delete_all
+    time = Time.now + 1 * 60 * 60 * 24
+    BetterBJ::Job.submit('# some work here', :run_at => time)
+    assert_in_delta(time.to_f, BetterBJ::ActiveJob.first.run_at.to_f, 1)
+  end
+  
+  def test_sumbit_raises_an_error_if_the_job_cannot_be_created
+    assert_raise(ActiveRecord::RecordInvalid) do
+      BetterBJ::Job.submit('# some work here', :run_at => nil)
+    end
+  end
+  
+  ###########################
+  ### Finding and Locking ###
+  ###########################
+  
+  def test_finding_ready_to_run_jobs
+    assert_nil(BetterBJ::ActiveJob.find_ready_to_run)  # no jobs in the database
+    create_code_job('# some work here', :run_at => Time.now + 1)
+    assert_nil(BetterBJ::ActiveJob.find_ready_to_run)  # it's not time yet
+    sleep 1                                            # wait for the set time
+    assert_equal(@job, BetterBJ::ActiveJob.find_ready_to_run)
+  end
+  
+  def test_locking_a_job_sets_state_started_at_and_runner_pid
+    create_code_job('# some work here')
+    assert_equal("Pending", @job.state)
+    assert_nil(@job.started_at)
+    assert_nil(@job.runner_pid)
+    assert(@job.lock?, "We could not lock the job")
+    assert_equal("Starting", @job.state)
+    assert_not_nil(@job.started_at)
+    assert_equal(Process.pid, @job.runner_pid)
+  end
+  
+  def test_cannot_lock_a_job_that_has_been_touched_by_another_process
+    create_code_job('# some work here')
+    job_in_another_process = BetterBJ::ActiveJob.find(@job.id)
+    job_in_another_process.touch  # incrementing the lock_version
+    assert(!@job.lock?, "We locked a job that was externally manipulated")
   end
   
   #################
@@ -185,15 +252,26 @@ class TestJob < Test::Unit::TestCase
     assert(executed.successful?, "Job wasn't successful with a normal exit")
   end
   
-  def test_run_updates_attempts_last_run_error_and_finished_at_for_a_failed_job
-    create_code_job('exit -1', :retries => 1)
+  def test_run_updates_state_attempts_error_and_finished_at_for_a_failed_job
+    create_code_job('exit -1  # fail', :retries => 1)
     assert_equal(0, @job.attempts)
     assert_nil(@job.last_run_error)
     assert_nil(@job.finished_at)
     @job.run
+    assert_equal("Pending", @job.state)
     assert_equal(1, @job.attempts)
     assert_match(/\AExit status/, @job.last_run_error)
     assert_not_nil(@job.finished_at)
+  end
+  
+  def test_job_retry_delays_increase_until_the_maximum_delay_repeats
+    delays = BetterBJ::ActiveJob::RETRY_DELAYS
+    create_code_job('exit -1  # fail', :retries => delays.size + 2)
+    (delays + [delays.max] * 2).each do |delay|
+      old_run_time = @job.run_at
+      @job.run
+      assert_equal(old_run_time + delay, @job.run_at)
+    end
   end
   
   def test_run_keeps_the_latest_run_error_if_not_replaced
@@ -220,7 +298,7 @@ class TestJob < Test::Unit::TestCase
   end
   
   def test_run_moves_a_job_to_executed_jobs_when_retries_are_exhausted
-    test_run_updates_attempts_last_run_error_and_finished_at_for_a_failed_job
+    test_run_updates_state_attempts_error_and_finished_at_for_a_failed_job
     assert_equal(@job.retries, @job.attempts)  # the next run exhausts retries
     assert_equal(1, BetterBJ::ActiveJob.count)
     assert_equal(0, BetterBJ::ExecutedJob.count)
@@ -240,7 +318,9 @@ class TestJob < Test::Unit::TestCase
     assert_match(/Job exceeded timeout/, @job.last_run_error)
   end
   
+  #######
   private
+  #######
   
   def create_code_job(code, options = { })
     @job = BetterBJ::ActiveCodeJob.create!( { :code          => code,

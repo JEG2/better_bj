@@ -56,22 +56,32 @@ module TestHelper
   ### Database ###
   ################
   
-  def prepare_test_db
-    ActiveRecord::Base.establish_connection(
-      :adapter  => "sqlite3",
-      :database => DB_PATH
-    )
-    ActiveRecord::Base.connection  # creates the database
+  def migrate_database(dir)
     migration       = BetterBJ::Table.migration.join("\n")
     migration_class = migration[/\Aclass\s+(\S+)/, 1]
     eval( migration +
-          "\n#{migration_class}.verbose = false\n#{migration_class}.up",
+          "\n#{migration_class}.verbose = false\n#{migration_class}.#{dir}",
           TOPLEVEL_BINDING )
   end
   
+  def prepare_test_db
+    ActiveRecord::Base.establish_connection(
+      :adapter   => "mysql",
+      :encoding  => "utf8",
+      :reconnect => true,
+      :database  => "better_bj_test",
+      :pool      => 5,
+      :username  => "root",
+      :password  => nil,
+      :socket    => "/tmp/mysql.sock"
+    )
+    ActiveRecord::Base.connection  # creates the database
+    migrate_database(:up)
+  end
+  
   def cleanup_test_db
+    migrate_database(:down)
     ActiveRecord::Base.connection.disconnect!  # drop connection, if it exists
-    File.unlink(DB_PATH) if File.exist? DB_PATH
   end
   
   ###################

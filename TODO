@@ -1,0 +1,6 @@
+* Add periodic job support
+* Add support for a heartbeat process on runners
+* Build primary top level API for scheduling jobs, managing runners, etc.
+* Added command-line interface
+* Convert into a full Rails plugin
+* Build a gem
