@@ -1,6 +1,10 @@
+* Have Runner's clear stale registrations on startup
+* Periodically reset overdue jobs
 * Add periodic job support
+* Add support for script and Rake task jobs
 * Add support for a heartbeat process on runners
 * Build primary top level API for scheduling jobs, managing runners, etc.
-* Added command-line interface
+* Add command-line interface
+* Write documentation for how to schedule jobs and manage runners
 * Convert into a full Rails plugin
 * Build a gem
